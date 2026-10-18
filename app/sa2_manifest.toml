@@ -1,0 +1,33 @@
+# ReXGlue recompilation manifest for Sonic Adventure 2 (Xbox Live Arcade, title 58411202, default.xex).
+#
+# Run tools/codegen.ps1 (Windows) or tools/codegen.sh: it calls `rexglue codegen sa2_manifest.toml` and the
+# post-codegen steps. The project name sets the prefix of everything generated: generated/default/sa2_{init,pch,funcs}.h,
+# sa2_recomp.N.cpp, and the CMake target sa2_recomp built by CMakeLists.txt.
+#
+# default.xex: image base 0x82000000, entry point 0x82543108, image size 0x02560000, XEX version 0.0.0.3.
+
+[project]
+name = "sa2"
+sdk_version = "0.10.0"
+# Your own game files: the extracted XBLA package (assets/game_root, made by tools/stfs_extract.py), with default.xex
+# at its root. Nothing from the game is distributed with this project.
+game_root = "../assets/game_root"
+
+[entrypoint]
+file_path = "../assets/game_root/default.xex"
+out_directory_path = "generated/default"
+
+# The includes are processed before this table, so whatever is set here overrides what is included.
+#   overrides.toml       written by hand: code the automatic function discovery misses, each with its evidence
+#   codegen_flavor.toml  the codegen flavour, written by tools\codegen.ps1 -Flavor: empty for "classic", a copy of
+#                        perf_overrides.toml (code generation options for speed) for "optimised"
+includes = ["overrides.toml", "codegen_flavor.toml"]
+
+# The 360 port's replacement for the GameCube REL overlays: one guest DLL with the stage code, which the game loads at
+# run time (XexLoadImage) from gd/DLL/xbox 360/. Without it the game stops at its entry point
+# ("Execute(88010308): function not in function table", third boot, 2026-10-05).
+[[modules]]
+guest_path = "gd/DLL/xbox 360/Data_DLL.xex"
+file_path = "../assets/game_root/gd/DLL/xbox 360/Data_DLL.xex"
+out_directory_path = "generated/data_dll"
+includes = ["overrides_data_dll.toml", "codegen_flavor.toml"]

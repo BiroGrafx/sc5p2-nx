@@ -1,0 +1,257 @@
+// Space Channel 5 Part 2: rhythm offset for sound that reaches the player late (sc5p2_rhythm_offset_ms; on the Switch
+// sc5p2_rhythm_offset_bluetooth_ms while Bluetooth headphones play the sound) and the "[rhythm]" timing report.
+// The copy below is the generated sub_823EE390 (tools/make_rhythm_offset.py writes this file from the template
+// tools/sc5p2_rhythm_offset.cpp.in) with three insertions marked "sc5p2".
+//
+// WHY
+//   Bluetooth headphones play the sound 150-300 ms after the console sends it. The player presses on the beat they
+//   hear, so every press reaches the game that much late, and the game's windows call it a miss: with Bluetooth
+//   headphones on the console every press was judged wrong (2026-10-17).
+//
+// WHAT THE GAME DOES (found 2026-10-18)
+//   The presses of a dance are judged by the task "ShInput<Judge>" (the task table at 0x820E70B8: update sub_823EE390,
+//   end sub_823ED838 = the phrase's grade into the View Rating and the hearts). Every frame the update takes
+//   now = the beat clock (float at 0x83B9DACC, 60 ticks per beat; the tempo in BPM is the float at 0x83B9DAB0, so one
+//   second is BPM ticks) minus the task's start tick ([task+20]). The current note (task+40+28*i: +2 its button, +4 its
+//   tick, +12/+16/+20/+24 the ticks where its phase becomes early / good / missed / gone) follows `now` through
+//   sub_823EC2E0, and a press is judged against it by sub_823EE250: the right button in the good phase is a hit, a
+//   press in the early phase a bad one, a press before it is ignored. The judge reads the clock nowhere else, and
+//   nothing after a judgement (the score, Ulala's answer, the sounds) depends on the clock.
+//
+// WHAT THIS DOES
+//   The update runs as a copy of sub_823EE390 whose `now` is taken `offset` earlier: offset x BPM / 1000 ticks. Every
+//   window opens and closes that much later, in step with the sound the player hears, and a press is still judged the
+//   moment it happens. The copy also notes where the presses land: every 30 s of dancing one "[rhythm]" line (warning
+//   level, so it reaches the console's log) gives the presses' average distance from the nearest note's beat, the
+//   windows and the misses. One test with headphones gives their offset.
+//
+// WHY IT IS EXACT: with offset 0 the copy is the generated function plus reads. It is used only while the guest code is
+//   the code it was copied from (the hash below); otherwise the original runs.
+// RISK: an offset far from the headphones' real delay moves the windows away from the beat the player hears.
+// KEY: sc5p2_rhythm_offset_ms, sc5p2_rhythm_offset_bluetooth_ms, sc5p2_rhythm_report.
+
+// The generated code's macros and declarations (the copy is generated code; the build adds generated/default to
+// this file's include path).
+#include "sc5p2_pch.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+
+#include <rex/cvar.h>
+#include <rex/hook.h>
+#include <rex/logging.h>
+
+#include "cpu/sa2_enhancements.h"
+#include "cpu/sc5p2_rhythm.h"
+
+REXCVAR_DEFINE_INT32(sc5p2_rhythm_offset_ms, 0, "SC5P2",
+                     "Rhythm offset in ms: the dances judge a press as if it came this much earlier, for sound that "
+                     "reaches you late (0 = the game's own timing)")
+    .range(-300, 1000)
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+REXCVAR_DEFINE_INT32(sc5p2_rhythm_offset_bluetooth_ms, 300, "SC5P2",
+                     "Switch: the rhythm offset in ms while the console's audio goes to Bluetooth headphones (used "
+                     "instead of sc5p2_rhythm_offset_ms then)")
+    .range(-300, 1000)
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+REXCVAR_DEFINE_BOOL(sc5p2_rhythm_report, true, "SC5P2",
+                    "Every 30 s of dancing, log where the presses landed against the beat ([rhythm] lines)")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+REXCVAR_DEFINE_BOOL(sc5p2_diag_rhythm, false, "SC5P2", "Diagnostic: log every judged press and missed note")
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+REXCVAR_DEFINE_INT32(sc5p2_test_autoplay_ms, -1, "SC5P2",
+                     "Test runs: press each note's button by itself this many ms after its beat (-1 = off)")
+    .range(-1, 1000)
+    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+
+// The copy's callees.
+DECLARE_REX_FUNC(sub_821AC408);
+DECLARE_REX_FUNC(sub_823C7690);
+DECLARE_REX_FUNC(sub_823DCAA8);
+DECLARE_REX_FUNC(sub_823EC138);
+DECLARE_REX_FUNC(sub_823EC2E0);
+DECLARE_REX_FUNC(sub_823EC628);
+DECLARE_REX_FUNC(sub_823EDF60);
+DECLARE_REX_FUNC(sub_823EE250);
+
+namespace {
+
+constexpr uint32_t kJudgeUpdate = 0x823EE390;
+constexpr uint32_t kJudgeUpdateBytes = 644;  // .pdata: 161 instructions
+constexpr uint64_t kJudgeUpdateHash = 0x5960C6C07407AB64ull;
+constexpr uint32_t kTempo = 0x83B9DAB0;         // float, beats per minute
+constexpr uint32_t kClock = 0x83B9DACC;         // float, ticks (60 per beat)
+constexpr uint32_t kPad0Pressed = 0x83B72C80;   // the game's pad 0: buttons pressed this frame (+4: held)
+constexpr uint32_t kPad0Masks = 0x82F23534;     // pad 0's masks: [0] every dance button, [1 + i] note button i
+constexpr int kNoteSize = 28;
+constexpr int kMaxNotes = 64;
+
+inline uint32_t Ld32(const uint8_t* base, uint32_t a) {
+  uint32_t v;
+  std::memcpy(&v, base + a, 4);
+  return __builtin_bswap32(v);
+}
+inline float LdF(const uint8_t* base, uint32_t a) {
+  const uint32_t u = Ld32(base, a);
+  float f;
+  std::memcpy(&f, &u, 4);
+  return f;
+}
+inline void St32(uint8_t* base, uint32_t a, uint32_t v) {
+  v = __builtin_bswap32(v);
+  std::memcpy(base + a, &v, 4);
+}
+
+// All of this runs on the game thread (the task update), so plain variables.
+int g_base_ms = 0, g_bluetooth_ms = 0, g_autoplay_ms = -1;
+bool g_report = true, g_diag = false;
+int g_offset_ms = 0;  // the offset of the latest update
+uint32_t g_auto_task = 0, g_auto_start = 0;
+int g_auto_index = -1;
+
+float Tempo(const uint8_t* base) {
+  const float bpm = LdF(base, kTempo);
+  return (bpm >= 20.f && bpm <= 400.f) ? bpm : 0.f;
+}
+
+int32_t OffsetTicks(const uint8_t* base) {
+  g_offset_ms = sc5p2::rhythm::BluetoothActive() ? g_bluetooth_ms : g_base_ms;
+  const float bpm = Tempo(base);
+  if (!g_offset_ms || bpm == 0.f) return 0;
+  return int32_t(std::lround(double(g_offset_ms) * bpm / 1000.0));
+}
+
+// The timing report.
+struct Stats {
+  uint32_t presses = 0, before = 0, early = 0, good = 0, missed = 0;
+  double nearest_sum = 0, nearest_min = 0, nearest_max = 0;
+  uint32_t nearest_n = 0;
+  double early_from = 0, good_from = 0, good_to = 0;  // the latest note's windows, ms from its beat
+};
+Stats g_stats;
+std::chrono::steady_clock::time_point g_report_at{};
+
+void MaybeReport() {
+  if (!g_report) return;
+  const auto now = std::chrono::steady_clock::now();
+  if (g_report_at == std::chrono::steady_clock::time_point{}) g_report_at = now + std::chrono::seconds(30);
+  if (now < g_report_at) return;
+  g_report_at = now + std::chrono::seconds(30);
+  Stats& s = g_stats;
+  if (s.presses + s.missed == 0) return;
+  REXLOG_WARN(
+      "[rhythm] last 30 s: {} presses ({} in the good window, {} early, {} before the window), {} notes missed; the "
+      "presses landed {:+.0f} ms from the nearest beat on average (from {:+.0f} to {:+.0f}); windows: early from "
+      "{:+.0f} ms, good {:+.0f} to {:+.0f} ms; offset {} ms, {}",
+      s.presses, s.good, s.early, s.before, s.missed, s.nearest_n ? s.nearest_sum / s.nearest_n : 0.0, s.nearest_min,
+      s.nearest_max, s.early_from, s.good_from, s.good_to, g_offset_ms,
+      sc5p2::rhythm::BluetoothActive() ? "Bluetooth" : "not Bluetooth");
+  s = Stats{};
+}
+
+// A press is about to be judged: `now` is the (offset) tick, `note` the current note of `task`.
+void NotePress(const uint8_t* base, uint32_t task, uint32_t note, int32_t now) {
+  const float bpm = Tempo(base);
+  if (bpm == 0.f) return;
+  const double ms_per_tick = 1000.0 / bpm;
+  const int phase = int8_t(base[task]);
+  const int32_t beat = int32_t(Ld32(base, note + 4));
+  Stats& s = g_stats;
+  ++s.presses;
+  if (phase == 1) ++s.early;
+  else if (phase == 2) ++s.good;
+  else ++s.before;
+  s.early_from = (int32_t(Ld32(base, note + 12)) - beat) * ms_per_tick;
+  s.good_from = (int32_t(Ld32(base, note + 16)) - beat) * ms_per_tick;
+  s.good_to = (int32_t(Ld32(base, note + 20)) - beat) * ms_per_tick;
+  // Distance to the nearest note of the phrase (a late press may belong to the note before the current one).
+  const int count = std::min<int>(int8_t(base[task + 2]), kMaxNotes);
+  int32_t nearest = now - beat;
+  for (int i = 0; i < count; ++i) {
+    const int32_t d = now - int32_t(Ld32(base, task + 40 + kNoteSize * i + 4));
+    if (std::abs(d) < std::abs(nearest)) nearest = d;
+  }
+  const double nearest_ms = nearest * ms_per_tick;
+  s.nearest_min = s.nearest_n ? std::min(s.nearest_min, nearest_ms) : nearest_ms;
+  s.nearest_max = s.nearest_n ? std::max(s.nearest_max, nearest_ms) : nearest_ms;
+  s.nearest_sum += nearest_ms;
+  ++s.nearest_n;
+  if (g_diag) {
+    REXLOG_INFO("[rhythm] press: phase {} at {:+.0f} ms from the note's beat ({:+.0f} from the nearest), windows: "
+                "early from {:+.0f}, good {:+.0f} to {:+.0f} ms; button {} of note {}; offset {} ms, {:.1f} BPM",
+                phase, (now - beat) * ms_per_tick, nearest_ms, s.early_from, s.good_from, s.good_to,
+                base[note + 2] & 7, int8_t(base[task + 3]), g_offset_ms, bpm);
+  }
+  MaybeReport();
+}
+
+// The current note's window closed without a press.
+void NoteMiss() {
+  ++g_stats.missed;
+  if (g_diag) REXLOG_INFO("[rhythm] missed a note (offset {} ms)", g_offset_ms);
+  MaybeReport();
+}
+
+// sc5p2_test_autoplay_ms: a player who presses every note's button that long after its beat (by the game's own clock,
+// the offset aside): the press is written into pad 0's pressed buttons for the update that sees the time come.
+void Autoplay(PPCContext& ctx, uint8_t* base) {
+  const uint32_t task = ctx.r3.u32;
+  const int index = int8_t(base[task + 3]), count = int8_t(base[task + 2]);
+  if (index < 0 || index >= count || Ld32(base, task + 16) != 0) return;  // no note left, or a hold under way
+  const uint32_t start_tick = Ld32(base, task + 20);  // a new phrase may reuse the task's memory
+  if (task == g_auto_task && index == g_auto_index && start_tick == g_auto_start) return;
+  const float bpm = Tempo(base);
+  if (bpm == 0.f) return;
+  const uint32_t note = task + 40 + kNoteSize * index;
+  // The game's own arithmetic: (float)(clock - (float)start), truncated.
+  const float start = float(double(int32_t(start_tick)));
+  const int32_t now = int32_t(float(double(LdF(base, kClock)) - double(start)));
+  const int32_t beat = int32_t(Ld32(base, note + 4));
+  if (now < beat + int32_t(std::lround(g_autoplay_ms * bpm / 1000.0))) return;
+  g_auto_task = task;
+  g_auto_index = index;
+  g_auto_start = start_tick;
+  const uint32_t button = base[note + 2] & 7;
+  St32(base, kPad0Pressed, Ld32(base, kPad0Pressed) | Ld32(base, kPad0Masks + 4 * (1 + button)));
+  REXLOG_INFO("[autoplay] note {} (button {}{}): pressed {:+.0f} ms after its beat", index, button,
+              (base[note + 2] & 8) ? ", a hold" : "", (now - beat) * 1000.0 / bpm);
+}
+
+// sub_823EE390, the ShInput<Judge> update, as generated, with the insertions marked "sc5p2".
+void JudgeUpdate(PPCContext& __restrict ctx, uint8_t* base) {
+@@JUDGE_BODY@@
+}
+
+int g_state = 0;  // 0 unknown, 1 the copy, -1 the original (the guest code is not the copied code)
+
+}  // namespace
+
+REX_EXTERN(__imp__sub_823EE390);
+REX_HOOK_RAW(sub_823EE390) {
+  if (g_state == 0) {
+    g_state = sa2::enh::GuestCodeMatches(base, kJudgeUpdate, kJudgeUpdateBytes, kJudgeUpdateHash,
+                                         "sc5p2_rhythm_offset_ms")
+                  ? 1
+                  : -1;
+    g_base_ms = REXCVAR_GET(sc5p2_rhythm_offset_ms);
+    g_bluetooth_ms = REXCVAR_GET(sc5p2_rhythm_offset_bluetooth_ms);
+    g_report = REXCVAR_GET(sc5p2_rhythm_report);
+    g_diag = REXCVAR_GET(sc5p2_diag_rhythm);
+    g_autoplay_ms = REXCVAR_GET(sc5p2_test_autoplay_ms);
+    sc5p2::rhythm::StartAudioOutputWatch();
+    if (g_state > 0) {
+      REXLOG_WARN("[rhythm] the dances judge with an offset of {} ms ({} ms while Bluetooth headphones play the sound)",
+                  g_base_ms, g_bluetooth_ms);
+    }
+  }
+  if (g_state < 0) {
+    __imp__sub_823EE390(ctx, base);
+    return;
+  }
+  if (g_autoplay_ms >= 0) Autoplay(ctx, base);
+  JudgeUpdate(ctx, base);
+}

@@ -1,0 +1,22 @@
+# Settings read at startup (ReXGlue cvars). The build copies this file next to the executable when there is none
+# there yet; edit the copy. Any cvar can also be given on the command line (--name=value) or as REX_<NAME>.
+
+# XBLA titles ask XAM for their license; 0 means "trial". Your purchased copy of the game is the full version.
+license_mask = 1
+
+# GPU: stage 1 draws with ReXGlue's emulated Xenos GPU (Vulkan through MoltenVK on the Mac).
+gpu_plugin = "xenos"
+
+log_level = "info"
+
+# Development defaults: launch muted and windowed in the background, so test runs do not take over the desktop or
+# the speakers. Set both to false to play.
+audio_mute = true
+window_start_minimized = false
+
+# Windowed on the Mac (the SDK starts fullscreen by default).
+fullscreen = false
+
+# Mac test renderer (MoltenVK on AMD): depth clamp, used for the game's clip-disabled draws, rasterizes triangles
+# that reach behind the camera as screen-wide wedges (Ulala close-ups, 2026-10-16). Clip at the near plane instead.
+vulkan_depth_clamp = false

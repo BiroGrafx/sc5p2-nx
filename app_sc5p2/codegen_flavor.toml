@@ -1,0 +1,45 @@
+# Optimised codegen for Space Channel 5 Part 2 (sa2-nx's app/codegen_flavor.toml, step A: the options that need no
+# per-function audit). Only how the C++ is written changes, so the compiler can keep guest state in host registers;
+# the guest-visible result is the same (sa2-nx docs/enhancements.md, "Build-time: the codegen flavour"):
+#   - cr0-cr7, ctr, xer and the lwarx reservation as C++ locals; skip_msr (no mfmsr/mtmsrd fences or global lock around
+#     guest atomics); dform_disp_split; fctiwz_inline, fcti_inline, div_inline (host instructions instead of guarded C);
+#   - fp_moves_modeless, fp_compares_modeless, fp_mode_lookahead (+ past_branch off), fp_copy_pairs: far fewer host
+#     flush-mode (msr fpcr) switches, which are expensive on the A57.
+# Step B: non_volatile_as_local (r14-r31, f14-f31, v14-v31/v64-v127 as C++ locals: the save/restore helpers go away).
+# tools/read_before_write.py must run on code generated WITH the option (it sees the locals' spelling; on the classic
+# code it finds nothing): --noreturn=82284B70,8227DCA0,82286760 (the guest longjmp, std::_Xlength_error's helper and
+# _CxxThrowException: after the throw comes exception data and a catch funclet ReXGlue never dispatches). 8 left: one
+# real, sub_8222DA24 (an EH funclet entry reading its owner's r31; marked share_registers in overrides.toml; unmarked,
+# the boot faulted at guest 0x60), and the tool's known false alarms (xor rX,rX,rX in sub_8222EBD0/sub_8222EF60;
+# subfe rX,rX,rX in sub_82268858/sub_8242E6F8/sub_8242EF80; the setjmp body sub_82284E90; CompareAnyMode's cr6 output
+# in sub_823B8CC8).
+# setjmp/longjmp: this game takes libjpeg's longjmp error path at every boot (SA2 never does), so the generator now
+# hands every register local of the 8 setjmp callers to ctx before `env = ctx` and takes them back after a longjmp
+# (sdk/src/codegen/builders/context.cpp + function_graph.cpp, "setjmp markers"): the guest's restore semantics exactly.
+# Not yet: elide_lr_stores (the GPU-wait census and the console profiler read ctx.lr), non_argument_as_local (needs
+# tools/non_argument_audit.py and the game's keep list).
+# Post-codegen steps: tools/post_codegen_sc5p2.sh.
+cr_as_local = true
+ctr_as_local = true
+xer_as_local = true
+reserved_as_local = true
+skip_msr = true
+dform_disp_split = true
+fctiwz_inline = true
+fp_moves_modeless = true
+fp_compares_modeless = true
+fp_mode_lookahead = true
+fp_mode_lookahead_past_branch = false
+fcti_inline = true
+fp_copy_pairs = true
+div_inline = true
+non_volatile_as_local = true
+# Step C: non_argument_as_local (r0, r2, r11, r12, f0 and v32-v63 as C++ locals). tools/non_argument_audit.py on the
+# step B code (--noreturn=82284B70,8227DCA0,82286760,82131020,822843D0; sub_82131020 is the fatal-error reporter that
+# ends in exit): ENTRY = the __save*/__rest* helpers, 489 MSVC EH funclets (all share_registers, marked by the
+# generator) and the stack probe sub_82285864 (frame size in r12); RET = sub_82293C18 taking r11 back from its
+# funclet sub_82293CE0 (share_registers: the generated copy-back takes it). The C++ EH dispatch keeps its registers in
+# ctx, as in sa2-nx: _CallSettingFrame sub_822921F0 (`mr r12,r4; mtlr r3; blrl` to the funclet) and the continuation
+# jump sub_822838A4 (`mtctr r4; mr r12,r5; bctr`), with the stack probe.
+non_argument_as_local = true
+non_argument_as_local_keep = [0x82285864, 0x822921F0, 0x822838A4]

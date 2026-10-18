@@ -1,0 +1,60 @@
+# Space Channel 5 Part 2 settings, read at start.
+
+# Anti-aliasing: 0 = off, 2 = 2x, 4 = 4x. Smoother edges, more GPU work.
+sa2_msaa = 0
+
+# true: vblanks follow the frames (keep this). false: fixed 60 Hz vblanks (steady, but the button timing breaks).
+sa2_vsync_relaxed = true
+
+# Rhythm offset in milliseconds for the dances: a press counts as if it came that much earlier. Use it when the sound
+# reaches you late. 0 = the game's own timing (speaker, wired headphones, TV).
+sc5p2_rhythm_offset_ms = 0
+
+# The same, used instead while the console's audio goes to Bluetooth headphones (they play the sound late).
+# Presses still judged late with headphones: raise it (350, 400). Judged early: lower it (250, 200).
+sc5p2_rhythm_offset_bluetooth_ms = 300
+
+# Face buttons by position, as on an Xbox pad (bottom = A). false = by letter.
+input_xbox_layout = true
+
+# Single Joy-Cons are held sideways, one per player.
+input_joycon_sideways = true
+
+# Button mapping for each player: the Switch buttons that press each Xbox button. Empty = default.
+# Buttons: A B X Y L R ZL ZR PLUS MINUS LSTICK RSTICK UP DOWN LEFT RIGHT SL SR NONE. Example: a = "B, ZR"
+
+[input_p1]
+a = ""
+b = ""
+x = ""
+y = ""
+lb = ""
+rb = ""
+lt = ""
+rt = ""
+start = ""
+back = ""
+ls = ""
+rs = ""
+up = ""
+down = ""
+left = ""
+right = ""
+
+[input_p2]
+a = ""
+b = ""
+x = ""
+y = ""
+lb = ""
+rb = ""
+lt = ""
+rt = ""
+start = ""
+back = ""
+ls = ""
+rs = ""
+up = ""
+down = ""
+left = ""
+right = ""

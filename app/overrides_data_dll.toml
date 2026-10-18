@@ -1,0 +1,7 @@
+# Analysis corrections for the guest DLL gd/DLL/xbox 360/Data_DLL.xex (the stage code). Same rules as overrides.toml:
+# every entry needs its evidence.
+
+[functions]
+# First validation run with the DLL (2026-10-05): a tail call (`b`) to an address discovery had not assigned to any
+# function ("target not in any function").
+"0x8801441C" = { }  # from 0x8801446C

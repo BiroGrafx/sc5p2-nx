@@ -1,0 +1,81 @@
+# Space Channel 5 Part 2-specific analysis corrections for the code generator.
+# Every entry carries its evidence (which run or tool found it).
+
+# The CRT's setjmp/longjmp (root keys: they must stay outside any table), as in sa2-nx (app/overrides.toml). The
+# game's libjpeg reports errors with longjmp back to its setjmp; recompiled as plain calls, longjmp restored r1/r31
+# from the jmp_buf and returned to its caller with a foreign stack frame (Mac boot 3, 2026-10-16: sub_82204328 -
+# libjpeg's SOI check, error 53 - returned to sub_82204408 with r1 0x7018E690 instead of 0x7018E430 and r31 = 0,
+# then a read of guest 0x1A4).
+#   setjmp  0x82284E90: stfd f14..f31, std r1/r2/r13-r31, lr, cr into r3's buffer; returns 0
+#   longjmp 0x82284B70: the mirror image from the same offsets (lfd f14,0 / ld r14,160 / ld r31,296 / ld r1,144)
+setjmp_address = 0x82284E90
+longjmp_address = 0x82284B70
+
+[functions]
+# First validation run (rexglue codegen, 2026-10-16): a direct unconditional branch (`b`, tail call) to each address
+# below, which automatic discovery had not assigned to any function ("target not in any function"; caller listed).
+# No sizes imposed: the Discover phase determines each boundary from the PPC code.
+"0x821B2220" = { }  # from 0x821B6598
+"0x821C1F28" = { }  # from 0x821B5F24
+
+# First Mac boot (2026-10-16): the C/C++ start-up tables walked by sub_8222F6D8 (__xi 0x824B10A4-0x824B10B0,
+# __xc 0x824B0010-0x824B10A0; 132 constructor pointers) hold six addresses discovery had not found. The first one
+# trapped at boot ("Call to invalid or unregistered function at guest address 0x824A5258").
+"0x824A5258" = { }  # static constructor (start-up table)
+"0x824A5540" = { }  # static constructor (start-up table)
+"0x824A56A0" = { }  # static constructor (start-up table)
+"0x824A5858" = { }  # static constructor (start-up table)
+"0x824A63B8" = { }  # static constructor (start-up table)
+"0x824A64D0" = { }  # static constructor (start-up table)
+
+# Code pointers into unclaimed gaps, stored in data (vtables, callback tables) or built in code (lis/addi:
+# callbacks passed at run time), accepted by tools/pointer_fixpoint.py pass 1: the scratch listing fits
+# in the gap (or continues only into a registered function it branches to: "then the registered tail"),
+# ends in a terminator and reads no register that is undefined at a function entry. The comment says
+# where the pointer is stored ("pointer at") or built ("built at", inside the code range).
+"0x821168B8" = { }  # 2 instructions, pointer at 0x820E6F3C
+"0x821168C0" = { }  # 2 instructions, pointer at 0x820E6F40 (+2 more)
+"0x8212EC90" = { }  # 7 in the gap, then the registered tail sub_8212ECAC, built at 0x8212EBAC
+"0x82134C60" = { }  # 9 instructions, pointer at 0x8207ED74 (+1 more)
+"0x8213C430" = { }  # 6 instructions, pointer at 0x820807AC
+"0x8213C448" = { }  # 6 instructions, pointer at 0x820807B0
+"0x8213E8E0" = { }  # 14 in the gap, then the registered tail sub_8213E918, pointer at 0x8207F7E8
+"0x8214EA28" = { }  # 16 in the gap, then the registered tail sub_8214EA68, pointer at 0x8207EFB0
+"0x8214EA98" = { }  # 13 instructions, pointer at 0x8207EFF0 (+4 more)
+"0x82192C68" = { }  # 5 instructions, pointer at 0x82002C64
+"0x821AF0E8" = { }  # 18 instructions, built at 0x821AFE3C
+"0x8222DA24" = { share_registers = true }  # 4 instructions, pointer at 0x820F1380. An MSVC EH funclet entry: it reads its owner's r31 (addi r12,r31,320) and calls the funclet sub_8222DA78 (the generator marks that one from the EH tables, not this entry). With non_volatile_as_local unmarked it got r31 = 0 and the boot faulted at guest 0x60 (2026-10-16); tools/read_before_write.py --noreturn=82284B70,8227DCA0,82286760
+"0x822398D0" = { }  # 2 instructions, pointer at 0x8203A594
+"0x8223BD98" = { }  # 2 instructions, pointer at 0x8203A648 (+4 more)
+"0x8223BDA0" = { }  # 2 instructions, pointer at 0x8203A684
+"0x8223BDB0" = { }  # 2 instructions, pointer at 0x8203A658 (+4 more)
+"0x8223BDB8" = { }  # 2 instructions, pointer at 0x8203A638 (+2 more)
+"0x82241D68" = { }  # 2 instructions, pointer at 0x8203A660 (+4 more)
+"0x82241D70" = { }  # 2 instructions, pointer at 0x8203AA9C
+"0x82241D80" = { }  # 2 instructions, pointer at 0x8203A66C (+4 more)
+"0x82241D88" = { }  # 2 instructions, pointer at 0x8203AA80 (+1 more)
+"0x82241D90" = { }  # 2 instructions, pointer at 0x8203A640 (+4 more)
+"0x82241D98" = { }  # 2 instructions, pointer at 0x8203AA50 (+1 more)
+"0x82242040" = { }  # 2 instructions, pointer at 0x8203A644 (+4 more)
+"0x82242048" = { }  # 2 instructions, pointer at 0x8203AB5C
+"0x82242058" = { }  # 2 instructions, pointer at 0x8203A654 (+4 more)
+"0x82242060" = { }  # 2 instructions, pointer at 0x8203A650 (+4 more)
+"0x82242068" = { }  # 2 instructions, pointer at 0x8203A678 (+4 more)
+"0x82242070" = { }  # 2 instructions, pointer at 0x8203A674 (+4 more)
+"0x82242078" = { }  # 2 instructions, pointer at 0x8203A64C (+4 more)
+"0x82242650" = { }  # 6 instructions, pointer at 0x8203AC34
+"0x82243280" = { }  # 2 instructions, pointer at 0x8203ABC8
+"0x82243FC8" = { }  # 2 instructions, pointer at 0x8203AC90
+"0x82246D40" = { }  # 11 in the gap, then the registered tail sub_82246D6C, pointer at 0x8203AE7C
+"0x82255B90" = { }  # 2 instructions, pointer at 0x8203ED80 (+1 more)
+"0x82298E28" = { }  # 4 instructions, built at 0x82299F54
+"0x82298E38" = { }  # 29 instructions, built at 0x82299F60
+"0x82328268" = { }  # 2 instructions, built at 0x823282C0
+"0x82328270" = { }  # 4 instructions, built at 0x823282BC
+
+# Mac gameplay run play-1 (2026-10-16): Report 1 stopped with "Call to invalid or unregistered function at guest
+# address 0x82464FE0", a dispatcher stored only in data at 0x820DB240 (the pointer scan rejected it: "extends beyond
+# its gap"). Its body runs to 0x82465037: lwz r10,4(r3) / mr r11,r3 / three-way compare, then two stubs (0x82465000,
+# 0x8246501C) that use r11 and end in bctr. Discovery had split off 0x82465000 as a function of its own (no caller,
+# no pointer: it reads r11, which only the dispatcher sets). Same shape as sub_82464F88 just before it.
+"0x82464FE0" = { size = 0x58 }  # dispatcher + its two bctr stubs

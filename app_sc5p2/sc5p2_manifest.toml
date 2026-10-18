@@ -1,0 +1,16 @@
+# ReXGlue recompilation manifest for Space Channel 5 Part 2 (Xbox Live Arcade, title 58410A39, default.xex).
+# default.xex: image base 0x82000000, entry point 0x822294C0, XDK 2.0.20353 (D3D9, XAudio2, XMP).
+# Format follows sa2-nx's app/sa2_manifest.toml. First pass: no overrides yet.
+
+[project]
+name = "sc5p2"
+sdk_version = "0.10.0"
+# Your own game files: the extracted XBLA package (assets/game_root, made by tools/stfs_extract.py).
+game_root = "../../assets/game_root"
+
+[entrypoint]
+file_path = "../../assets/game_root/default.xex"
+out_directory_path = "generated/default"
+
+# Hand-written corrections (each with its evidence).
+includes = ["overrides.toml", "codegen_flavor.toml"]

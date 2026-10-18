@@ -1,0 +1,91 @@
+# Guest functions replaced by localized copies (tools/localize_native.py), regenerated into app/generated/hot/ by
+# tools/codegen.ps1 after every codegen, so each copy matches the flavour it is built with. One per line:
+# <address> <what>
+82146ED8 njCalcPoint: matrix x point (flag 0) or x vector (flag != 0)
+82146F60 njMultiMatrix: 3x4 matrix product, aliasing through a stack copy
+82147AC0 njTranslate: matrix translation += 3x3 x (f1, f2, f3)
+82147DA8 njPushMatrix: copy the current matrix one slot up the matrix stack
+82147B38 njRotateX: matrix x rotation about X (Ninja angle)
+82147C08 njRotateY: matrix x rotation about Y (Ninja angle)
+82147CD8 njRotateZ: matrix x rotation about Z (Ninja angle)
+8213EC28 ordered tree (std::map) lower-bound search by 32-bit key
+# The 15 hottest game functions on the PC profile of the game thread (busy samples, 2026-10-06), after the above. They
+# call other functions, so the guard cannot run both versions (callee side effects would happen twice): they run
+# unguarded, exact by construction (the localizer's transformation, verified by the guard on the functions above) and
+# checked end to end on the PC (lockstep capture). Each has its own key (sa2_cpu_native_sub_<addr>).
+8213A4D8 hot game function (4.5 % of the game thread on PC)
+82139DA0 hot game function (3.2 %)
+8214CF10 hot game function (2.7 %)
+8214E130 hot game function (2.4 %)
+82555CC8 Direct3D internal (2.4 %)
+821BC520 hot game function (2.3 %)
+82549178 Direct3D internal (2.0 %)
+82960CE0 hot game function (1.8 %)
+82141420 hot game function, VMX matrix work (1.8 %)
+82555B70 Direct3D internal (1.5 %)
+82960928 hot game function (1.4 %)
+8295F9C0 hot game function (1.4 %)
+82552408 Direct3D internal (1.4 %)
+82960808 hot game function (1.3 %)
+8214D6D8 hot game function (1.3 %)
+# Round 2: the hottest guardable game-thread functions of the CONSOLE profile (cpu_on, 1020 MHz, gameplay under 40 fps,
+# 2026-10-06): leaves, or functions that only call the save/restore helpers, memcpy and another copy here. Guarded
+# (the guard runs both versions and compares registers and memory) and on by default.
+8214BBD8 keyframe search: binary search of a key table by int(f1), the two neighbours and the blend factor
+82963658 compares two arrays of 24-byte records (packed sums), 1 when equal
+82140C98 matrix routine: copies a 4x4 to the stack, memcpy, sub_82140A90, stores the 4x4 result
+82140A90 VMX 4x4 matrix routine (leaf; the caller's parameter area and two vector outputs)
+8214A208 njCos: sine-table lookup with interpolation (Ninja angle)
+8214A050 njSin: sine-table lookup with interpolation (Ninja angle)
+82146E48 3x4 matrix to 4x4 (transposed, w row/column from constants)
+82146DD8 4x4 matrix to 3x4 (transposed)
+82141700 stores r4 into one of seven words of a structure (switch on r5)
+82963590 copies r5 records of 24 bytes and stores the count
+821BA660 visibility test: njCalcPoint of a point by the current matrix, optional z out, frustum plane tests (1 = visible)
+# Round 3: the next 20 hottest game-thread functions of the console profile (round-2 NRO, cpu_on, 1020 MHz) that are
+# not natives yet. They make calls (some indirect), so they run unguarded, exact by construction; with round 3's smart
+# sync each call writes back and reloads only the registers its callee can reach. Each has its own key.
+8214B6C8 object draw walk, calls the render-state, matrix and model functions (11.7 % innermost)
+8214B520 render-state table: applies changed states through their handlers (2.7 % self)
+8213D1F8 model draw setup, one indirect call (3.6 % self)
+829601B0 draw submission, calls the Direct3D draw functions (1.9 % self)
+82832B78 float routine of the 0x8283 group (collision or physics math; 13 self + 19.8 inner)
+8213D7F0 matrix setup: matrix copy, transpose and VMX matrix calls
+8214ACA8 object transform and draw (inclusive 52.8 %)
+828326F8 float routine of the 0x8283 group, only the save/restore helpers
+82833E20 float routine of the 0x8283 group, calls 82832B78
+828243A0 hot game function, one indirect call
+821BA890 object draw wrapper (inclusive 59 %)
+82833938 routine of the 0x8283 group, calls 82833568
+82834458 wrapper of 82833E20
+82816B40 hot game function, indirect calls
+82139930 hot game function, one indirect call
+82834538 wrapper of 82832298 and 82833938
+821472E0 matrix routine: transpose, VMX matrix and memcpy calls
+82565758 Direct3D draw path (not hooked by the renderer)
+8213E040 hot game function, indirect calls
+82833568 routine of the 0x8283 group, only the save/restore helpers
+# Round 4: 20 more game-thread functions of the console profile (round-2 NRO, cpu_on, 1020 MHz), ranked by their own
+# samples (a copy speeds up the function's own code, not its callees). 82832298 and 8214B320 are leaves: guarded, the
+# others make calls and run unguarded. 82565C60 and 82556A60 are also hooked by the renderer (src/me/sa2_me_hooks.cpp),
+# whose hooks call the copy in place of the original (SA2_COPY_FOR_HOOK).
+82832298 rescales 16 records of four floats: when the fourth is under a constant limit, the first three are scaled by limit/fourth (or set to the limit) (leaf)
+8214B320 fills one 20-byte record of a table at 0x83853480 from three table lookups indexed by r3 (leaf)
+82565C60 D3DDevice_DrawVertices: the draw's PM4 packets (the renderer's DrawVertices hook calls this copy)
+82556A60 D3D draw-time shader load, FlushState part (the renderer's shader-load hook calls this copy)
+82555E18 D3D: copies a block of state with memcpy into the command buffer
+8251D2A0 float routine with indirect calls (camera or object update)
+82141050 calls sub_82141C40 and one indirect call
+821390C8 wrapper of sub_82139120
+8217EB38 calls sub_8217FA70 and one indirect call
+82141240 float routine with six indirect calls
+825632F8 D3D: VMX and float state, PM4 packets (sub_82555930) and memcpy
+8251D1A8 object transform: njTranslate, njRotateX/Y/Z and sub_8251D2A0
+82556718 D3D: memcpy and four D3D helpers (sub_82555E18 among them)
+8254DED0 D3D: calls sub_8254D9A8 and sub_8254D3C8
+8254D0E0 D3D: calls sub_8254F400, sub_8254F338 and sub_8254F308
+8217F048 calls the 0x8217E family (sub_8217E338 among them) and one indirect call
+8214EAF0 float routine, njCalcPoint twice
+82227C98 calls the 0x82227 family, sub_82222B60/82222A08 and sub_82195B08
+8213D5C8 converts a float and dispatches through one indirect call
+82139C90 three memcpy calls

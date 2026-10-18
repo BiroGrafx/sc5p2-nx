@@ -1,0 +1,125 @@
+# Space Channel 5 Part 2 for the Switch: the fixed settings, compiled into the NRO (app_sc5p2/CMakeLists.txt,
+# src/sc5p2_app.h BuiltInConfig) and applied before the SD card's sc5p2.toml, which holds the player's options
+# (app_sc5p2/sc5p2_switch.toml) and may still override any key here for testing. sa2-nx's app/sa2_switch_defaults.toml
+# without the keys of SA2's own code (of its native function replacements only the C runtime's memcpy and memset, and
+# not its native Direct3D layer); docs/enhancements.md explains the rest.
+# Release 1.1.0 (2026-10-18), tested on the console: the whole game played through, the Report 4 boss included, with
+# the test diagnostics off; warnings still go to logs/ next to the NRO, and a shader the package lacks to misses/.
+# 1.0.0 (2026-10-17) was the first console release (Report 1 finished, View Rating 10 % -> 78.6 %).
+
+# Game and paths
+license_mask = 1
+sa2_renderer_native = true
+sa2_render_height_handheld = 720
+sa2_render_height_docked = 1080
+sa2_shader_misses = "misses"
+asset_pack = true
+asset_pack_build = true
+
+# Diagnostics off (test builds nx3-nx8 had them on: the console profiler, the GPU-wait census, the pad-read and judging
+# log "[judge]", the drawing thread's priority A/B). nx6 and nx7 misjudged the buttons on the console with the
+# ring-space census hook active (sc5p2_gpu_wait_census_space); nx8, with it off, played right in both priority phases
+# (rises/falls of the View Rating: 0x3B 27/4, 0x3A 20/1), so the drawing thread keeps the game threads' 0x3B.
+sc5p2_gpu_wait_census = false
+sc5p2_gpu_wait_census_space = false
+sc5p2_diag_input = false
+log_level = "warning"
+log_to_file = true
+switch_profile_stacks = false
+switch_profile_report = false
+sa2_gpu_marks_categories = false
+
+# CPU enhancements (docs/enhancements.md): the renderer's own and the GPU wait (src/cpu/sc5p2_gpu_wait.cpp). sa2-nx's
+# direct-state records need its Direct3D flush hooks, which this build does not have: off.
+sa2_cpu_enhancements = true
+sa2_cpu_gpu_wait_sleep = true
+sa2_gpu_wait_max_us = 1000
+sa2_cpu_ring_notify_lockfree = true
+sa2_cpu_lazy_trace_text = true
+sa2_cpu_note_shader_fast = true
+sa2_cpu_ring_extent_key = true
+sa2_cpu_ring_estimator_reason = true
+sa2_cpu_ring_rect_list_in_place = true
+sa2_cpu_ring_identity_accept_fast = true
+sa2_cpu_ring_entry_hash = true
+sa2_cpu_ring_redirect_key = true
+sa2_cpu_ring_target_memo = true
+sa2_cpu_ring_bias_seen = true
+sa2_cpu_ring_edram_memo = true
+sa2_cpu_ring_compare_uploaded = true
+sa2_cpu_direct_state = false
+sa2_cpu_direct_pair = false
+sa2_cpu_note_shader_pair = true
+sa2_cpu_ring_identity_memo = true
+sa2_cpu_direct_state_refs = false
+sa2_cpu_ring_bound_plan_memo = true
+sa2_cpu_direct_state_restore = false
+sa2_cpu_vertices_base_zero_r0 = true
+sa2_cpu_main_thread_priority = false
+sa2_main_thread_priority = 58
+# The C runtime's memcpy and memset as host code (src/cpu/sc5p2_hot_crt.cpp: sa2-nx's natives of the same routines;
+# memcpy was the game's hottest function at the Report 4 boss, 24 % of its busy time on the Mac).
+sa2_cpu_native_memcpy = true
+sa2_cpu_native_memset = true
+
+# The dances' rhythm offset (src/cpu/sc5p2_rhythm_offset.cpp): the game's own timing on the speaker, wired headphones
+# and the TV; while the console's audio goes to Bluetooth headphones (detected every second) the judge's windows
+# open and close 300 ms later. Every 30 s of dancing a "[rhythm]" line logs where the presses landed.
+sc5p2_rhythm_offset_ms = 0
+sc5p2_rhythm_offset_bluetooth_ms = 300
+sc5p2_rhythm_report = true
+
+# Renderer ring thread
+sa2_native_flat_identity = true
+sa2_native_fast_pair = true
+sa2_native_raw_microcode = true
+sa2_native_pm4_fast = true
+sa2_native_compare_fast = true
+sa2_native_fast_copy = true
+sa2_native_fingerprint_mode = 2
+sa2_native_dedupe_max_fingerprint = 16384
+sa2_native_indices_cache = true
+sa2_native_pipelines_prewarm = true
+sa2_native_upload_memory = 1
+sa2_native_deferred_recording = true
+sa2_deferred_native_fast = true
+sa2_deferred_native_update = true
+sa2_native_set4_differences = true
+sa2_native_nvk_emission = true
+sa2_native_nvk_cbufs = true
+sa2_native_nvk_dynamic = true
+sa2_native_nvk_preload = true
+sa2_native_dedupe_sync_epochs = true
+sa2_native_fingerprints_sampling = 0
+sa2_native_edram4_clear_color0 = true
+sa2_native_constants_dedupe = true
+sa2_native_pass_narrow_end = true
+sa2_native_zcull_1x_depth = false
+
+# Non-CPU enhancements
+sa2_noncpu_enhancements = true
+# Vblanks: relaxed vsync (a vblank when the ring thread waits for one, after the frame) with the flip kept on the
+# 1/60 s grid (sc5p2_vsync_flip_grid, me_native_system.cpp). nx5 had relaxed vsync alone: buttons right, but a frame
+# whose Swap reached the ring after 16.7 ms took 35.5 ms (Report 1's crowded dances: 28 fps, the dance behind the
+# music). nx6 had fixed 60 Hz vblanks: 30 fps, but the buttons misjudged on the console. This keeps nx5's vblank order
+# and nx6's flip timing.
+sa2_vsync_relaxed = true
+sc5p2_vsync_flip_grid = true
+# A frame slower than 1/30 s counts every refresh that passed (sc5p2_vsync_catch_up, nx12): the game counts its time
+# in vblanks, and at the Report 4 boss (27.7 fps on nx11) the dance fell behind the music. Frames on time: unchanged.
+sc5p2_vsync_catch_up = true
+# The grid on the screen's own refresh (display vsync event) instead of the system clock: every frame handed to the
+# screen right after a refresh and shown at the next, instead of drifting across it (the occasional 17 / 50 ms frames
+# that felt "sometimes laggy" at a steady 30 fps on the console).
+sc5p2_vsync_display_lock = true
+sa2_gpu_boost = true
+sa2_gpu_render_scale = true
+sa2_gpu_msaa = true
+sa2_gpu_prewarm_current_keys = true
+sa2_gpu_push_once = true
+sa2_gpu_structured_cf = true
+sa2_gpu_index_base_held = true
+sa2_gpu_texcoords_unswapped = true
+sa2_gpu_no_texture_signs = true
+sa2_gpu_identity_remap = true
+sa2_gpu_vs_fetch_reorder = true
